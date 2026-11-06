@@ -1,0 +1,342 @@
+{
+  "name": "Text back missed callers and alert the owner with Twilio",
+  "nodes": [
+    {
+      "id": "38154e72-4916-4042-8b48-ff37a913033f",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -520
+      ],
+      "parameters": {
+        "width": 620,
+        "height": 720,
+        "color": 1,
+        "content": "### How it works\nFor local service businesses that lose jobs when nobody can pick up. Calls come in to a Twilio number, which rings the owner's mobile for about 17 seconds. If nobody answers, or the line is busy, Twilio calls this workflow. The caller hears a short message and gets a text inviting them to reply. The owner gets an alert. The short ring time stops the owner's voicemail from \"answering\" first, which would make Twilio report the call as completed. Hidden numbers can't be texted, so only the owner is told. Requests from other Twilio accounts are ignored.\n\n### Setup\nYou need a Twilio number with Voice and SMS. US businesses must also finish A2P 10DLC registration, or Twilio blocks texts to US numbers.\n1. Fill in the Settings node.\n2. Pick your Twilio credential on both Twilio nodes.\n3. Publish the workflow and copy the webhook's production URL.\n4. In Twilio, create a TwiML Bin and set it as the number's \"A call comes in\" handler:\n`<Response><Dial timeout=\"12\" action=\"YOUR-WEBHOOK-URL\">+1OWNERMOBILE</Dial></Response>`\n5. Create a second TwiML Bin for the number's \"A message comes in\" handler, so replies reach the owner:\n`<Response><Message to=\"+1OWNERMOBILE\">{{From}}: {{Body}}</Message></Response>`\n6. Call from a second phone, let it ring out, then reply to the text.\n\n### Limitations\nEvery missed call sends a text, so a caller who redials gets another one. The same message goes out at all hours.\n\n### Customization\nEdit the texts in Decide what to send. The paid kit adds redial protection and after-hours texts: https://teldridge.gumroad.com/l/ngoljj"
+      }
+    },
+    {
+      "id": "68074ee6-e398-4a0c-aec7-f087c92fe4bf",
+      "name": "Section: read the call",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -160
+      ],
+      "parameters": {
+        "width": 720,
+        "height": 340,
+        "color": 7,
+        "content": "## Read how the call ended\nTwilio posts the result here. Edit your details in Settings. Twilio always gets its answer before any text is sent."
+      }
+    },
+    {
+      "id": "d783d1d1-94a5-4be3-bb83-f442fbd4d77c",
+      "name": "Section: send texts",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        -320
+      ],
+      "parameters": {
+        "width": 500,
+        "height": 640,
+        "color": 7,
+        "content": "## Send the texts\nIf the caller text fails, the owner alert still goes out. Open the Twilio node in the execution to read the error."
+      }
+    },
+    {
+      "id": "50ecb533-8434-4d94-848a-3485cc8ec7e8",
+      "name": "Twilio call ended",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "missed-call-text-back",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "085ed0f3-22a8-4482-81eb-3a43b4517562"
+    },
+    {
+      "id": "69f77c7b-ed44-4a7b-ae5b-840efff9b8c5",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "27fa8c7a-77c9-4155-8260-379671bc95b5",
+              "name": "businessName",
+              "value": "Ace Plumbing",
+              "type": "string"
+            },
+            {
+              "id": "22103f60-f179-41fb-8b91-38b745a07676",
+              "name": "ownerMobile",
+              "value": "+15555550199",
+              "type": "string"
+            },
+            {
+              "id": "5310fb0a-0868-41a0-b867-bc3c80dd171e",
+              "name": "twilioNumber",
+              "value": "+15555550100",
+              "type": "string"
+            },
+            {
+              "id": "b9063671-9ba1-4951-afd6-c18407521192",
+              "name": "twilioAccountSid",
+              "value": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "type": "string"
+            },
+            {
+              "id": "5217c555-7d96-4664-81ac-73dc4ca96a4d",
+              "name": "bookingLink",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "29e20c2b-c6b3-41eb-b2ee-aa0dbb911b29",
+              "name": "voiceMessage",
+              "value": "Sorry we missed your call. We're sending you a text right now.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "56a2cd9f-1d3b-4ff3-9479-82f973e2774b",
+      "name": "Decide what to send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Decides what to send after Twilio reports how a forwarded call ended.\n// The values you edit live in the Settings node, not here.\nconst MISSED = ['no-answer', 'busy', 'failed', 'canceled'];\nconst input = $input.first().json;\nconst body = input.body || {};\nconst from = String(body.From || '').trim();\nconst status = String(body.DialCallStatus || '');\n\n// Only act on requests from your own Twilio account.\nconst missed = body.AccountSid === input.twilioAccountSid && MISSED.includes(status);\n// Hidden caller IDs arrive as \"anonymous\" (older accounts: +266696687) and can't be texted.\nconst textable = /^\\+\\d{8,15}$/.test(from) && from !== '+266696687';\n\nconst name = input.businessName;\nconst booking = String(input.bookingLink || '').trim();\nconst callerText = `Hi, this is ${name}. Sorry we missed your call! What can we help with? ${booking ? `Reply here or book: ${booking}` : 'Reply here.'} Reply STOP to opt out.`;\nconst ownerText = textable\n  ? `Missed call from ${from}. We texted them back. Any reply will be forwarded to this phone.`\n  : `Missed call from a hidden number. Couldn't text them back.`;\n\n// Only promise a text to a number that can get one.\nconst spoken = textable ? input.voiceMessage : 'Sorry we missed your call. Please try again soon.';\nconst xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nreturn [{\n  json: {\n    twiml: missed ? `<Response><Say>${xml(spoken)}</Say><Hangup/></Response>` : '<Response><Hangup/></Response>',\n    textCaller: missed && textable,\n    alertOwner: missed,\n    callerNumber: from,\n    callerText,\n    ownerMobile: input.ownerMobile,\n    ownerText,\n    twilioNumber: input.twilioNumber,\n    status,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "e110556b-e6b4-46c9-97c7-80b64eb98857",
+      "name": "Answer Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        820,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.twiml }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "7e0744bf-fc21-4077-9c19-19abf68952b0",
+      "name": "Text the caller?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "029b0d64-ae6e-4967-ba45-6a6b68be341e",
+              "leftValue": "={{ $json.textCaller }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "99b56db9-3260-4335-b021-d537cc03af70",
+      "name": "Text caller",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        -120
+      ],
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $json.twilioNumber }}",
+        "to": "={{ $json.callerNumber }}",
+        "toWhatsapp": false,
+        "message": "={{ $json.callerText }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "d21ee24e-7222-434c-801b-02bc7afae97d",
+      "name": "Alert the owner?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "187f941e-dbe5-4ec4-a6b6-82fa5af3a3b9",
+              "leftValue": "={{ $json.alertOwner }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d7440b3f-59dc-4eec-9472-c74facacd8aa",
+      "name": "Alert owner",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        120
+      ],
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $json.twilioNumber }}",
+        "to": "={{ $json.ownerMobile }}",
+        "toWhatsapp": false,
+        "message": "={{ $json.ownerText }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Twilio call ended": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Decide what to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide what to send": {
+      "main": [
+        [
+          {
+            "node": "Answer Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Twilio": {
+      "main": [
+        [
+          {
+            "node": "Text the caller?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert the owner?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text the caller?": {
+      "main": [
+        [
+          {
+            "node": "Text caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert the owner?": {
+      "main": [
+        [
+          {
+            "node": "Alert owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
